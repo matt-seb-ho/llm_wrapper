@@ -15,8 +15,8 @@ dependencies = [
   "diskcache",
   "tenacity",
   "tqdm",
-  "orjson"
-  "python-dotenv",
+  "orjson",
+  "python-dotenv"
 ]
 
 [project.urls]
