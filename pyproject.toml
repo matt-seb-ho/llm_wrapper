@@ -16,6 +16,7 @@ dependencies = [
   "tenacity",
   "tqdm",
   "orjson"
+  "python-dotenv",
 ]
 
 [project.urls]

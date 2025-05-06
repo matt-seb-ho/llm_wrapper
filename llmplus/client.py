@@ -77,10 +77,12 @@ class LLMClient:
         system_prompt: str | None = None,
         default_max_concurrency: int = 32,
         retry_cfg: RetryConfig | None = None,
+        dotenv_path: str | Path | None = None,
     ):
         self.provider_meta = PROVIDERS[provider]
         self._client_async = AsyncOpenAI(
-            api_key=self.provider_meta.api_key(), base_url=self.provider_meta.base_url
+            api_key=self.provider_meta.api_key(dotenv_path=dotenv_path),
+            base_url=self.provider_meta.base_url,
         )
 
         # default semaphore (used when caller does *not* supply one)

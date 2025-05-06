@@ -1,6 +1,9 @@
 import os
 from dataclasses import dataclass
 from enum import Enum, auto
+from pathlib import Path
+
+from dotenv import load_dotenv
 
 _NO_KEY = object()  # sentinel → “no key required”
 
@@ -20,9 +23,11 @@ class ProviderMeta:
     models: dict[str, ModelMeta]  # model‑name → meta
 
     # -- helpers -------------------------------------------------------------
-    def api_key(self) -> str | None:
+    def api_key(self, dotenv_path: str | Path | None = None) -> str | None:
         if self.env_key is _NO_KEY:
             return None
+        if dotenv_path:
+            load_dotenv(dotenv_path)
         return os.getenv(self.env_key)
 
 
