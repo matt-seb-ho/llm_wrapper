@@ -47,9 +47,10 @@ class GenerationConfig:
     # expose kwargs for OpenAI client (drop `n`)
     def to_kwargs(self, model_meta: ModelMeta) -> dict[str, t.Any]:
         param_dict = dataclasses.asdict(self)
-        extra_kwargs = param_dict.pop("extra_kwargs", {})
+        extra_kwargs = param_dict.pop("extra_kwargs", None) or {}
         # apply renaming
-        for default_name, custom_name in model_meta.param_renaming.items():
+        param_renaming = model_meta.param_renaming or {}
+        for default_name, custom_name in param_renaming.items():
             if default_name in param_dict:
                 param_dict[custom_name] = param_dict.pop(default_name)
             if default_name in extra_kwargs:

@@ -47,7 +47,7 @@ PROVIDERS: dict[Provider, ProviderMeta] = {
         base_url="https://api.openai.com/v1",
         supports_multi=True,
         models={
-            "gpt-4o": ModelMeta("gpt-4o"),
+            "gpt-4o": ModelMeta("gpt-4o", unsupported_kw=()),
             "o3-mini": ModelMeta(
                 "o3-mini",
                 param_renaming={"max_tokens": "max_completion_tokens"},
