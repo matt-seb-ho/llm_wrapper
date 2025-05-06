@@ -3,7 +3,7 @@ import dataclasses
 import logging
 import random
 import typing as t
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 import diskcache as dc
@@ -93,7 +93,7 @@ class LLMClient:
         self.session_stats: dict[str, dict[str, int]] = {}
 
         # timestamps
-        self._session_start = datetime.now(datetime.UTC).isoformat()
+        self._session_start = datetime.now(tz=UTC).isoformat()
         self._last_request: str | None = None
 
         # retry decorator
@@ -322,7 +322,7 @@ class LLMClient:
         stats["output_tokens"] += usage.completion_tokens
         stats["requests"] += 1
         stats["completions"] += num_completions
-        self._last_request = datetime.now(tz=datetime.UTC).isoformat()
+        self._last_request = datetime.now(tz=UTC).isoformat()
 
     def _make_cache_key(
         self,
