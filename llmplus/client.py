@@ -1,6 +1,5 @@
 import asyncio
 import dataclasses
-import json
 import logging
 import random
 import typing as t
@@ -8,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 import diskcache as dc
+import orjson
 from openai import AsyncOpenAI
 from openai.types import CompletionUsage
 from tqdm import tqdm
@@ -182,13 +182,15 @@ class LLMClient:
         args: GenerationConfig | None = None,
         batch_size: int = 16,
         ignore_cache: bool = False,
-        progress_cb: t.Callable[[int, int], None] | None = None,
+        progress_file: str | Path = "batch_progress.json",
         show_progress: bool = True,
         **gen_kwargs,
     ) -> list[list[str]]:
         request_sem = asyncio.Semaphore(batch_size)
         results: list[list[str]] = [[] for _ in prompts]
         pbar = tqdm(total=len(prompts), disable=not show_progress)
+        file_path = Path(progress_file).expanduser() if progress_file else None
+        file_lock = asyncio.Lock()
 
         async def _job(idx: int, prm: str | list[dict]):
             try:
@@ -206,8 +208,11 @@ class LLMClient:
                 results[idx] = [None] * (args.n if args else gen_kwargs.get("n", 1))
             finally:
                 pbar.update()
-                if progress_cb:
-                    progress_cb(idx + 1, len(prompts))
+                if file_path:
+                    async with file_lock:
+                        tmp = file_path.with_suffix(".tmp")
+                        tmp.write_bytes(orjson.dumps(results))
+                        tmp.replace(file_path)
 
         await asyncio.gather(*(_job(i, p) for i, p in enumerate(prompts)))
         pbar.close()
@@ -222,7 +227,7 @@ class LLMClient:
             "session_end": self._last_request,
             "stats": self.session_stats,
         }
-        Path(path).write_text(json.dumps(record, indent=2))
+        Path(path).write_bytes(orjson.dumps(record))
 
     # ------------------------------------------------------------------
     # internals

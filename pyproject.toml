@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "llmplus"
+version = "0.1.0"
+description = "A robust LLM client with retry, caching, and batching support"
+readme = "README.md"
+authors = [{name = "Matthew Ho", email = "matt.seb.ho@gmail.com"}]
+license = {text = "MIT"}
+dependencies = [
+  "openai",
+  "tiktoken",
+  "diskcache",
+  "tenacity",
+  "tqdm",
+  "orjson"
+]
+
+[project.urls]
+"Source" = "https://github.com/matt-seb-ho/llm_wrapper"
