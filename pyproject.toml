@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "A robust LLM client with retry, caching, and batching support"
 readme = "README.md"
 authors = [{name = "Matthew Ho", email = "matt.seb.ho@gmail.com"}]
-license = {text = "MIT"}
+license = "MIT"
 dependencies = [
   "openai",
   "tiktoken",
@@ -20,3 +20,7 @@ dependencies = [
 
 [project.urls]
 "Source" = "https://github.com/matt-seb-ho/llm_wrapper"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["llmplus"]
