@@ -1,6 +1,6 @@
 import os
 from dataclasses import dataclass
-from enum import Enum, auto
+from enum import Enum
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -32,10 +32,10 @@ class ProviderMeta:
 
 
 class Provider(Enum):
-    OPENAI = auto()
-    DEEPSEEK = auto()
-    VLLM = auto()
-    SGLANG = auto()
+    OPENAI = "openai"
+    DEEPSEEK = "deepseek"
+    VLLM = "vllm"
+    SGLANG = "sglang"
 
 
 # ---------------------------------------------------------------------------#
