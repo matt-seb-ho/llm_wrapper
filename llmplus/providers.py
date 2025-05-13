@@ -48,8 +48,8 @@ PROVIDERS: dict[Provider, ProviderMeta] = {
         supports_multi=True,
         models={
             "gpt-4o": ModelMeta("gpt-4o", unsupported_kw=()),
-            "o3-mini": ModelMeta(
-                "o3-mini",
+            "o3-mini-2025-01-31": ModelMeta(
+                "o3-mini-2025-01-31",
                 param_renaming={"max_tokens": "max_completion_tokens"},
                 unsupported_kw=("temperature", "top_p"),
             ),
