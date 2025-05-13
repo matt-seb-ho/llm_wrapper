@@ -53,6 +53,11 @@ PROVIDERS: dict[Provider, ProviderMeta] = {
                 param_renaming={"max_tokens": "max_completion_tokens"},
                 unsupported_kw=("temperature", "top_p"),
             ),
+            "o4-mini-2025-04-16": ModelMeta(
+                "o4-mini-2025-04-16",
+                param_renaming={"max_tokens": "max_completion_tokens"},
+                unsupported_kw=("temperature", "top_p"),
+            ),
         },
     ),
     Provider.DEEPSEEK: ProviderMeta(
