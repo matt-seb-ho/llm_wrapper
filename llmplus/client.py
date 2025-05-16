@@ -170,7 +170,8 @@ class LLMClient:
             expand_multi=expand_multi,
             request_sem=request_sem,
         )
-        self._resp_cache[cache_key] = cached + fetched
+        new_nonempty_responses = [r for r in fetched if r and r.strip() != ""]
+        self._resp_cache[cache_key] = cached + new_nonempty_responses
         return usable_cached + fetched
 
     # ------------------------------------------------------------------
