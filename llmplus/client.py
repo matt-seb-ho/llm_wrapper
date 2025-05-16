@@ -26,7 +26,7 @@ logger.addHandler(logging.NullHandler())
 
 @dataclasses.dataclass
 class GenerationConfig:
-    n: int = 1
+    n: int | list[int] = 1
     temperature: float = 0.3
     max_tokens: int = 1024
     top_p: float = 1.0
@@ -47,9 +47,10 @@ class GenerationConfig:
     # expose kwargs for OpenAI client (drop `n`)
     def to_kwargs(self, model_meta: ModelMeta) -> dict[str, t.Any]:
         param_dict = dataclasses.asdict(self)
-        extra_kwargs = param_dict.pop("extra_kwargs", {})
+        extra_kwargs = param_dict.pop("extra_kwargs", None) or {}
         # apply renaming
-        for default_name, custom_name in model_meta.param_renaming.items():
+        param_renaming = model_meta.param_renaming or {}
+        for default_name, custom_name in param_renaming.items():
             if default_name in param_dict:
                 param_dict[custom_name] = param_dict.pop(default_name)
             if default_name in extra_kwargs:
@@ -194,9 +195,15 @@ class LLMClient:
         pbar = tqdm(total=len(prompts), disable=not show_progress)
         file_path = Path(progress_file).expanduser() if progress_file else None
         file_lock = asyncio.Lock()
+        num_samples = gen_kwargs.get("n", 1)
+        variable_num_samples = isinstance(num_samples, list)
+        if variable_num_samples:
+            assert len(num_samples) == len(prompts)
 
         async def _job(idx: int, prm: str | list[dict]):
             try:
+                if variable_num_samples:
+                    gen_kwargs["n"] = num_samples[idx]
                 res = await self.async_generate(
                     prm,
                     model=model,

@@ -1,6 +1,6 @@
 import os
 from dataclasses import dataclass
-from enum import Enum, auto
+from enum import Enum
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -32,10 +32,10 @@ class ProviderMeta:
 
 
 class Provider(Enum):
-    OPENAI = auto()
-    DEEPSEEK = auto()
-    VLLM = auto()
-    SGLANG = auto()
+    OPENAI = "openai"
+    DEEPSEEK = "deepseek"
+    VLLM = "vllm"
+    SGLANG = "sglang"
 
 
 # ---------------------------------------------------------------------------#
@@ -47,9 +47,14 @@ PROVIDERS: dict[Provider, ProviderMeta] = {
         base_url="https://api.openai.com/v1",
         supports_multi=True,
         models={
-            "gpt-4o": ModelMeta("gpt-4o"),
-            "o3-mini": ModelMeta(
-                "o3-mini",
+            "gpt-4o": ModelMeta("gpt-4o", unsupported_kw=()),
+            "o3-mini-2025-01-31": ModelMeta(
+                "o3-mini-2025-01-31",
+                param_renaming={"max_tokens": "max_completion_tokens"},
+                unsupported_kw=("temperature", "top_p"),
+            ),
+            "o4-mini-2025-04-16": ModelMeta(
+                "o4-mini-2025-04-16",
                 param_renaming={"max_tokens": "max_completion_tokens"},
                 unsupported_kw=("temperature", "top_p"),
             ),
