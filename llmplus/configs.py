@@ -12,6 +12,9 @@ class GenerationConfig:
     top_p: float = 1.0
     seed: int | None = None
     extra_kwargs: dict[str, Any] | None = None
+
+    # calling options for wrapper operation (not forwarded to API request)
+    expand_multi: bool | None = field(default=None, metadata={"forward": False})
     batch_size: int = field(default=16, metadata={"forward": False})
     ignore_cache: bool = field(default=False, metadata={"forward": False})
 

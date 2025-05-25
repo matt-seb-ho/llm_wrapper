@@ -16,7 +16,8 @@ dependencies = [
   "tenacity",
   "tqdm",
   "orjson",
-  "python-dotenv"
+  "python-dotenv",
+  "nest-asyncio",
 ]
 
 [project.urls]

@@ -2,7 +2,6 @@ import asyncio
 import dataclasses
 import logging
 import random
-from collections import defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -66,11 +65,8 @@ class LLMClient:
     async def async_generate(
         self,
         prompt: str | list[dict],
-        *,
         model: str | None = None,
         gen_cfg: GenerationConfig | None = None,
-        ignore_cache: bool = False,
-        expand_multi: bool | None = None,
         request_sem: asyncio.Semaphore | None = None,
         **gen_kwargs,
     ) -> list[str]:
@@ -84,26 +80,28 @@ class LLMClient:
         assert model in self.provider_meta.models, f"Unknown model {model}"
         mmeta = self.provider_meta.models[model]
 
-        expand_multi = (
-            (not self.provider_meta.supports_multi)
-            if expand_multi is None
-            else expand_multi
-        )
-
         cache_key = self._make_cache_key(prompt, model, mmeta, gen_cfg)
         cached = self._resp_cache.get(cache_key) or []
-        usable_cached = [] if ignore_cache else cached
+        usable_cached = [] if gen_cfg.ignore_cache else cached
         if usable_cached and len(usable_cached) >= n:
             return random.sample(usable_cached, n)
 
         # only fetch missing samples
-        gen_cfg.n = n - len(usable_cached)
+        # select whether to expand multi‑sample requests if not specified
+        updated_cfg = dataclasses.replace(
+            gen_cfg,
+            n=(n - len(usable_cached)),
+            expand_multi=(
+                (not self.provider_meta.supports_multi)
+                if gen_cfg.expand_multi is None
+                else gen_cfg.expand_multi
+            ),
+        )
         fetched = await self._request_completions(
             prompt=prompt,
             model=model,
             model_meta=mmeta,
-            gen_cfg=gen_cfg,
-            expand_multi=expand_multi,
+            gen_cfg=updated_cfg,
             request_sem=request_sem,
         )
         self._resp_cache[cache_key] = cached + fetched
@@ -115,21 +113,18 @@ class LLMClient:
     async def async_batch_generate(
         self,
         prompts: list[str | list[dict]],
-        *,
         model: str | None = None,
-        args: GenerationConfig | None = None,
-        batch_size: int = 16,
-        ignore_cache: bool = False,
+        gen_cfg: GenerationConfig | None = None,
         progress_file: str | Path = "batch_progress.json",
         show_progress: bool = True,
         **gen_kwargs,
     ) -> list[list[str | None]]:
-        request_sem = asyncio.Semaphore(batch_size)
+        request_sem = asyncio.Semaphore(gen_cfg.batch_size)
         results: list[list[str]] = [[] for _ in prompts]
         pbar = tqdm(total=len(prompts), disable=not show_progress)
         file_path = Path(progress_file).expanduser() if progress_file else None
         file_lock = asyncio.Lock()
-        num_samples = gen_kwargs.get("n", 1)
+        num_samples = gen_kwargs.get("n", (1 if gen_cfg is None else gen_cfg.n))
         variable_num_samples = isinstance(num_samples, list)
         if variable_num_samples:
             assert len(num_samples) == len(prompts)
@@ -141,15 +136,14 @@ class LLMClient:
                 res = await self.async_generate(
                     prm,
                     model=model,
-                    gen_cfg=args,
-                    ignore_cache=ignore_cache,
+                    gen_cfg=gen_cfg,
                     request_sem=request_sem,
                     **gen_kwargs,
                 )
                 results[idx] = res
             except Exception as e:
                 logger.error("Prompt %s failed: %s", idx, e, exc_info=False)
-                results[idx] = [None] * (args.n if args else gen_kwargs.get("n", 1))
+                results[idx] = [None] * gen_kwargs.get("n", 1)
             finally:
                 pbar.update()
                 if file_path:
@@ -179,22 +173,19 @@ class LLMClient:
     async def _request_completions(
         self,
         prompt: str | list[dict],
-        model: str,
         model_meta: ModelMeta,
         gen_cfg: GenerationConfig,
-        expand_multi: bool,
         request_sem: asyncio.Semaphore | None = None,
     ) -> list[str]:
         n = gen_cfg.n
         if n <= 0:
             return []
         request_sem = request_sem or self._default_sem
-        if expand_multi:
+        if gen_cfg.expand_multi:
             expand_multi_cfg = dataclasses.replace(gen_cfg, n=1)
             tasks = [
                 self._async_request(
                     prompt=prompt,
-                    model=model,
                     model_meta=model_meta,
                     gen_cfg=expand_multi_cfg,
                     request_sem=request_sem,
@@ -212,7 +203,6 @@ class LLMClient:
             try:
                 return await self._async_request(
                     prompt=prompt,
-                    model=model,
                     model_meta=model_meta,
                     gen_cfg=gen_cfg,
                     request_sem=request_sem,
@@ -224,7 +214,6 @@ class LLMClient:
     async def _async_request(
         self,
         prompt: str | list[dict],
-        model: str,
         model_meta: ModelMeta,
         gen_cfg: GenerationConfig,
         request_sem: asyncio.Semaphore,
@@ -235,14 +224,14 @@ class LLMClient:
                 msgs = self._format_chat(prompt)
                 gen_kwargs = gen_cfg.to_kwargs(model_meta)
                 resp = await self._client_async.chat.completions.create(
-                    model=model,
+                    model=model_meta.name,
                     messages=msgs,
                     **gen_kwargs,
                 )
                 return resp
 
         resp = await _send()
-        self._acc_usage(model, resp.usage, len(resp.choices))
+        self._acc_usage(model_meta.name, resp.usage, len(resp.choices))
         return [c.message.content for c in resp.choices]
 
     def _format_chat(self, inp: str | list[dict]):
