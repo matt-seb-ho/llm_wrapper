@@ -2,6 +2,7 @@ import os
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+from functools import cached_property
 
 from dotenv import load_dotenv
 
@@ -23,6 +24,7 @@ class ProviderMeta:
     models: dict[str, ModelMeta]  # model‑name → meta
 
     # -- helpers -------------------------------------------------------------
+    @cached_property
     def api_key(self, dotenv_path: str | Path | None = None) -> str | None:
         if self.env_key is _NO_KEY:
             return None
@@ -38,16 +40,18 @@ class Provider(Enum):
     SGLANG = "sglang"
 
 
-# ---------------------------------------------------------------------------#
-# Define only what you actually use.  Add more easily later.                 #
-# ---------------------------------------------------------------------------#
-PROVIDERS: dict[Provider, ProviderMeta] = {
+MODEL_REGISTRY: dict[Provider, ProviderMeta] = {
     Provider.OPENAI: ProviderMeta(
         env_key="OPENAI_API_KEY",
         base_url="https://api.openai.com/v1",
         supports_multi=True,
         models={
             "gpt-4o": ModelMeta("gpt-4o", unsupported_kw=()),
+            "gpt-4.1-2025-04-14": ModelMeta(
+                "gpt-4.1-2025-04-14",
+                param_renaming={"max_tokens": "max_completion_tokens"},
+                unsupported_kw=(),
+            ),
             "o3-mini-2025-01-31": ModelMeta(
                 "o3-mini-2025-01-31",
                 param_renaming={"max_tokens": "max_completion_tokens"},
@@ -90,3 +94,7 @@ PROVIDERS: dict[Provider, ProviderMeta] = {
         },
     ),
 }
+
+
+def register_model(provider: Provider, name: str, **kwargs):
+    MODEL_REGISTRY[provider].models[name] = ModelMeta(name, **kwargs)
