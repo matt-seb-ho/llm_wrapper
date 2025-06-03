@@ -99,7 +99,6 @@ class LLMClient:
         )
         fetched = await self._request_completions(
             prompt=prompt,
-            model=model,
             model_meta=mmeta,
             gen_cfg=updated_cfg,
             request_sem=request_sem,
@@ -157,8 +156,22 @@ class LLMClient:
         return results
 
     # ------------------------------------------------------------------
-    # persistence
+    # token usage
     # ------------------------------------------------------------------
+
+    def get_token_usage(
+        self,
+        model: str,
+    ) -> dict[str, int]:
+        if model not in self.session_stats:
+            self.session_stats[model] = {
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "requests": 0,
+                "completions": 0,
+            }
+        return self.session_stats[model]
+
     def save_session_usage(self, path: str | Path = "session_usage.json") -> None:
         record = {
             "session_start": self._session_start,
@@ -244,10 +257,7 @@ class LLMClient:
         return msgs
 
     def _acc_usage(self, model: str, usage: CompletionUsage, num_completions: int):
-        stats = self.session_stats.setdefault(
-            model,
-            {"input_tokens": 0, "output_tokens": 0, "requests": 0, "completions": 0},
-        )
+        stats = self.get_token_usage(model)
         stats["input_tokens"] += usage.prompt_tokens
         stats["output_tokens"] += usage.completion_tokens
         stats["requests"] += 1

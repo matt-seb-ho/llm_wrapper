@@ -2,7 +2,7 @@ import os
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from functools import cached_property
+from functools import cache
 
 from dotenv import load_dotenv
 
@@ -24,7 +24,6 @@ class ProviderMeta:
     models: dict[str, ModelMeta]  # model‑name → meta
 
     # -- helpers -------------------------------------------------------------
-    @cached_property
     def api_key(self, dotenv_path: str | Path | None = None) -> str | None:
         if self.env_key is _NO_KEY:
             return None
