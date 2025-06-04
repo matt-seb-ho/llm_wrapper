@@ -160,6 +160,10 @@ class LLMClient:
     # token usage
     # ------------------------------------------------------------------
 
+    def get_token_usage_dict(self) -> dict[str, dict[str, int]]:
+        """Get token usage statistics as a dictionary."""
+        return {model: stats.to_dict() for model, stats in self.session_stats.items()}
+
     def get_token_usage(
         self,
         model: str,
