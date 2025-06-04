@@ -13,6 +13,7 @@ from tqdm import tqdm
 
 from .configs import GenerationConfig, RetryConfig
 from .model_registry import MODEL_REGISTRY, ModelMeta, Provider
+from .model_token_usage import ModelTokenUsage
 from .sync_adapter import syncify
 from .utils import stable_hash, transient_retry
 
@@ -162,14 +163,9 @@ class LLMClient:
     def get_token_usage(
         self,
         model: str,
-    ) -> dict[str, int]:
+    ) -> ModelTokenUsage:
         if model not in self.session_stats:
-            self.session_stats[model] = {
-                "input_tokens": 0,
-                "output_tokens": 0,
-                "requests": 0,
-                "completions": 0,
-            }
+            self.session_stats[model] = ModelTokenUsage()
         return self.session_stats[model]
 
     def save_session_usage(self, path: str | Path = "session_usage.json") -> None:
@@ -244,7 +240,7 @@ class LLMClient:
                 return resp
 
         resp = await _send()
-        self._acc_usage(model_meta.name, resp.usage, len(resp.choices))
+        self._add_token_usage(model_meta.name, resp.usage, len(resp.choices))
         return [c.message.content for c in resp.choices]
 
     def _format_chat(self, inp: str | list[dict]):
@@ -256,12 +252,11 @@ class LLMClient:
             msgs = [{"role": "system", "content": self.system_prompt}, *msgs]
         return msgs
 
-    def _acc_usage(self, model: str, usage: CompletionUsage, num_completions: int):
+    def _add_token_usage(
+        self, model: str, usage: CompletionUsage, num_completions: int
+    ):
         stats = self.get_token_usage(model)
-        stats["input_tokens"] += usage.prompt_tokens
-        stats["output_tokens"] += usage.completion_tokens
-        stats["requests"] += 1
-        stats["completions"] += num_completions
+        stats.update(usage, num_completions=num_completions)
         self._last_request = datetime.now(tz=UTC).isoformat()
 
     def _make_cache_key(
