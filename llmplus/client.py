@@ -2,7 +2,6 @@ import asyncio
 import dataclasses
 import logging
 import random
-import typing as t
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -12,7 +11,10 @@ from openai import AsyncOpenAI
 from openai.types import CompletionUsage
 from tqdm import tqdm
 
-from .providers import PROVIDERS, ModelMeta, Provider
+from .configs import GenerationConfig, RetryConfig
+from .model_registry import MODEL_REGISTRY, ModelMeta, Provider
+from .model_token_usage import ModelTokenUsage
+from .sync_adapter import syncify
 from .utils import stable_hash, transient_retry
 
 # Libraries should ship no handlers to avoid double logging or “No handlers…” warnings.
@@ -22,52 +24,6 @@ from .utils import stable_hash, transient_retry
 # - users have full control by touching the root (or a parent) logger.
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
-
-
-@dataclasses.dataclass
-class GenerationConfig:
-    n: int | list[int] = 1
-    temperature: float = 0.3
-    max_tokens: int = 1024
-    top_p: float = 1.0
-    seed: int | None = None
-    extra_kwargs: dict[str, t.Any] | None = None
-
-    def override(self, **kwargs) -> "GenerationConfig":
-        """Create a new instance with updated values."""
-        arg_dict = dataclasses.asdict(self)
-        extra_kwargs = arg_dict.pop("extra_kwargs", {})
-        for k, v in kwargs.items():
-            if k in arg_dict:
-                arg_dict[k] = v
-            else:
-                extra_kwargs[k] = v
-        return GenerationConfig(**arg_dict, extra_kwargs=extra_kwargs)
-
-    # expose kwargs for OpenAI client (drop `n`)
-    def to_kwargs(self, model_meta: ModelMeta) -> dict[str, t.Any]:
-        param_dict = dataclasses.asdict(self)
-        extra_kwargs = param_dict.pop("extra_kwargs", None) or {}
-        # apply renaming
-        param_renaming = model_meta.param_renaming or {}
-        for default_name, custom_name in param_renaming.items():
-            if default_name in param_dict:
-                param_dict[custom_name] = param_dict.pop(default_name)
-            if default_name in extra_kwargs:
-                extra_kwargs[custom_name] = extra_kwargs.pop(default_name)
-        # apply extra kwargs
-        param_dict.update(extra_kwargs)
-        # remove unsupported args
-        for unsupported_arg in model_meta.unsupported_kw:
-            param_dict.pop(unsupported_arg, None)
-        return param_dict
-
-
-@dataclasses.dataclass
-class RetryConfig:
-    attempts: int = 5
-    wait_min: int = 1
-    wait_max: int = 120
 
 
 class LLMClient:
@@ -80,7 +36,7 @@ class LLMClient:
         retry_cfg: RetryConfig | None = None,
         dotenv_path: str | Path | None = None,
     ):
-        self.provider_meta = PROVIDERS[provider]
+        self.provider_meta = MODEL_REGISTRY[provider]
         self._client_async = AsyncOpenAI(
             api_key=self.provider_meta.api_key(dotenv_path=dotenv_path),
             base_url=self.provider_meta.base_url,
@@ -104,38 +60,14 @@ class LLMClient:
 
         self.system_prompt = system_prompt
 
-    def generate(
-        self,
-        prompt: str | list[dict],
-        *,
-        model: str | None = None,
-        gen_cfg: GenerationConfig | None = None,
-        ignore_cache: bool = False,
-        expand_multi: bool | None = None,
-        **gen_kwargs,
-    ) -> list[str]:
-        return asyncio.run(
-            self.async_generate(
-                prompt,
-                model=model,
-                gen_cfg=gen_cfg,
-                ignore_cache=ignore_cache,
-                expand_multi=expand_multi,
-                **gen_kwargs,
-            )
-        )
-
     # ------------------------------------------------------------------
     # core async generation api
     # ------------------------------------------------------------------
     async def async_generate(
         self,
         prompt: str | list[dict],
-        *,
         model: str | None = None,
         gen_cfg: GenerationConfig | None = None,
-        ignore_cache: bool = False,
-        expand_multi: bool | None = None,
         request_sem: asyncio.Semaphore | None = None,
         **gen_kwargs,
     ) -> list[str]:
@@ -149,26 +81,27 @@ class LLMClient:
         assert model in self.provider_meta.models, f"Unknown model {model}"
         mmeta = self.provider_meta.models[model]
 
-        expand_multi = (
-            (not self.provider_meta.supports_multi)
-            if expand_multi is None
-            else expand_multi
-        )
-
         cache_key = self._make_cache_key(prompt, model, mmeta, gen_cfg)
         cached = self._resp_cache.get(cache_key) or []
-        usable_cached = [] if ignore_cache else cached
+        usable_cached = [] if gen_cfg.ignore_cache else cached
         if usable_cached and len(usable_cached) >= n:
             return random.sample(usable_cached, n)
 
         # only fetch missing samples
-        gen_cfg.n = n - len(usable_cached)
+        # select whether to expand multi‑sample requests if not specified
+        updated_cfg = dataclasses.replace(
+            gen_cfg,
+            n=(n - len(usable_cached)),
+            expand_multi=(
+                (not self.provider_meta.supports_multi)
+                if gen_cfg.expand_multi is None
+                else gen_cfg.expand_multi
+            ),
+        )
         fetched = await self._request_completions(
             prompt=prompt,
-            model=model,
             model_meta=mmeta,
-            gen_cfg=gen_cfg,
-            expand_multi=expand_multi,
+            gen_cfg=updated_cfg,
             request_sem=request_sem,
         )
         new_nonempty_responses = [r for r in fetched if r and r.strip() != ""]
@@ -181,21 +114,18 @@ class LLMClient:
     async def async_batch_generate(
         self,
         prompts: list[str | list[dict]],
-        *,
         model: str | None = None,
-        args: GenerationConfig | None = None,
-        batch_size: int = 16,
-        ignore_cache: bool = False,
+        gen_cfg: GenerationConfig | None = None,
         progress_file: str | Path = "batch_progress.json",
         show_progress: bool = True,
         **gen_kwargs,
-    ) -> list[list[str]]:
-        request_sem = asyncio.Semaphore(batch_size)
+    ) -> list[list[str | None]]:
+        request_sem = asyncio.Semaphore(gen_cfg.batch_size)
         results: list[list[str]] = [[] for _ in prompts]
         pbar = tqdm(total=len(prompts), disable=not show_progress)
         file_path = Path(progress_file).expanduser() if progress_file else None
         file_lock = asyncio.Lock()
-        num_samples = gen_kwargs.get("n", 1)
+        num_samples = gen_kwargs.get("n", (1 if gen_cfg is None else gen_cfg.n))
         variable_num_samples = isinstance(num_samples, list)
         if variable_num_samples:
             assert len(num_samples) == len(prompts)
@@ -207,15 +137,14 @@ class LLMClient:
                 res = await self.async_generate(
                     prm,
                     model=model,
-                    gen_cfg=args,
-                    ignore_cache=ignore_cache,
+                    gen_cfg=gen_cfg,
                     request_sem=request_sem,
                     **gen_kwargs,
                 )
                 results[idx] = res
             except Exception as e:
                 logger.error("Prompt %s failed: %s", idx, e, exc_info=False)
-                results[idx] = [None] * (args.n if args else gen_kwargs.get("n", 1))
+                results[idx] = [None] * gen_kwargs.get("n", 1)
             finally:
                 pbar.update()
                 if file_path:
@@ -229,8 +158,21 @@ class LLMClient:
         return results
 
     # ------------------------------------------------------------------
-    # persistence
+    # token usage
     # ------------------------------------------------------------------
+
+    def get_token_usage_dict(self) -> dict[str, dict[str, int]]:
+        """Get token usage statistics as a dictionary."""
+        return {model: stats.to_dict() for model, stats in self.session_stats.items()}
+
+    def get_token_usage(
+        self,
+        model: str,
+    ) -> ModelTokenUsage:
+        if model not in self.session_stats:
+            self.session_stats[model] = ModelTokenUsage()
+        return self.session_stats[model]
+
     def save_session_usage(self, path: str | Path = "session_usage.json") -> None:
         record = {
             "session_start": self._session_start,
@@ -245,22 +187,19 @@ class LLMClient:
     async def _request_completions(
         self,
         prompt: str | list[dict],
-        model: str,
         model_meta: ModelMeta,
         gen_cfg: GenerationConfig,
-        expand_multi: bool,
         request_sem: asyncio.Semaphore | None = None,
     ) -> list[str]:
         n = gen_cfg.n
         if n <= 0:
             return []
         request_sem = request_sem or self._default_sem
-        if expand_multi:
+        if gen_cfg.expand_multi:
             expand_multi_cfg = dataclasses.replace(gen_cfg, n=1)
             tasks = [
                 self._async_request(
                     prompt=prompt,
-                    model=model,
                     model_meta=model_meta,
                     gen_cfg=expand_multi_cfg,
                     request_sem=request_sem,
@@ -278,7 +217,6 @@ class LLMClient:
             try:
                 return await self._async_request(
                     prompt=prompt,
-                    model=model,
                     model_meta=model_meta,
                     gen_cfg=gen_cfg,
                     request_sem=request_sem,
@@ -287,11 +225,9 @@ class LLMClient:
                 logger.error("one request failed: %s", e, exc_info=False)
                 return []
 
-    @transient_retry()
     async def _async_request(
         self,
         prompt: str | list[dict],
-        model: str,
         model_meta: ModelMeta,
         gen_cfg: GenerationConfig,
         request_sem: asyncio.Semaphore,
@@ -302,14 +238,14 @@ class LLMClient:
                 msgs = self._format_chat(prompt)
                 gen_kwargs = gen_cfg.to_kwargs(model_meta)
                 resp = await self._client_async.chat.completions.create(
-                    model=model,
+                    model=model_meta.name,
                     messages=msgs,
                     **gen_kwargs,
                 )
                 return resp
 
         resp = await _send()
-        self._acc_usage(model, resp.usage, len(resp.choices))
+        self._add_token_usage(model_meta.name, resp.usage, len(resp.choices))
         return [c.message.content for c in resp.choices]
 
     def _format_chat(self, inp: str | list[dict]):
@@ -321,15 +257,11 @@ class LLMClient:
             msgs = [{"role": "system", "content": self.system_prompt}, *msgs]
         return msgs
 
-    def _acc_usage(self, model: str, usage: CompletionUsage, num_completions: int):
-        stats = self.session_stats.setdefault(
-            model,
-            {"input_tokens": 0, "output_tokens": 0, "requests": 0, "completions": 0},
-        )
-        stats["input_tokens"] += usage.prompt_tokens
-        stats["output_tokens"] += usage.completion_tokens
-        stats["requests"] += 1
-        stats["completions"] += num_completions
+    def _add_token_usage(
+        self, model: str, usage: CompletionUsage, num_completions: int
+    ):
+        stats = self.get_token_usage(model)
+        stats.update(usage, num_completions=num_completions)
         self._last_request = datetime.now(tz=UTC).isoformat()
 
     def _make_cache_key(
@@ -349,3 +281,9 @@ class LLMClient:
         self._retry_deco = transient_retry(
             **(dataclasses.asdict(retry_cfg or self.retry_cfg))
         )
+
+    # ------------------------------------------------------------------
+    # sync facade (one-liners that call run_sync)
+    # ------------------------------------------------------------------
+    generate = syncify(async_generate)
+    batch_generate = syncify(async_batch_generate)
