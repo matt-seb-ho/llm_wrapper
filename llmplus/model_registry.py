@@ -51,6 +51,12 @@ MODEL_REGISTRY: dict[Provider, ProviderMeta] = {
                 param_renaming={"max_tokens": "max_completion_tokens"},
                 unsupported_kw=(),
             ),
+            # Add GPT-5 support: OpenAI returns 400 for temperature/top_p; map max_tokens
+            "gpt-5": ModelMeta(
+                "gpt-5",
+                param_renaming={"max_tokens": "max_completion_tokens"},
+                unsupported_kw=("temperature", "top_p"),
+            ),
             "o3-mini-2025-01-31": ModelMeta(
                 "o3-mini-2025-01-31",
                 param_renaming={"max_tokens": "max_completion_tokens"},
