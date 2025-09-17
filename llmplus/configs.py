@@ -21,7 +21,7 @@ class GenerationConfig:
     def override(self, **kwargs) -> "GenerationConfig":
         """Create a new instance with updated values."""
         arg_dict = asdict(self)
-        extra_kwargs = arg_dict.pop("extra_kwargs", {})
+        extra_kwargs = arg_dict.pop("extra_kwargs", {}) or {}
         for k, v in kwargs.items():
             if k in arg_dict:
                 arg_dict[k] = v

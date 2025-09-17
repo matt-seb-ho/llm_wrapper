@@ -160,11 +160,6 @@ class LLMClient:
     # ------------------------------------------------------------------
     # token usage
     # ------------------------------------------------------------------
-
-    def get_token_usage_dict(self) -> dict[str, dict[str, int]]:
-        """Get token usage statistics as a dictionary."""
-        return {model: stats.to_dict() for model, stats in self.session_stats.items()}
-
     def get_token_usage(
         self,
         model: str,
@@ -172,6 +167,16 @@ class LLMClient:
         if model not in self.session_stats:
             self.session_stats[model] = ModelTokenUsage()
         return self.session_stats[model]
+
+    def get_token_usage_dict(self) -> dict[str, dict[str, int]]:
+        """Get token usage statistics as a dictionary."""
+        return {model: stats.to_dict() for model, stats in self.session_stats.items()}
+
+    def reset_usage(self) -> None:
+        """Reset the session token usage statistics."""
+        self.session_stats = {}
+        self._session_start = datetime.now(tz=UTC).isoformat()
+        self._last_request = None
 
     def save_session_usage(self, path: str | Path = "session_usage.json") -> None:
         record = {
@@ -211,7 +216,9 @@ class LLMClient:
                 try:
                     results.extend(await coro)
                 except Exception as e:
-                    logger.error("one sub‑request failed: %s", e, exc_info=False)
+                    # logger.error("one sub‑request failed: %s", e, exc_info=False)
+                    msg = f"one sub‑request failed. type: {type(e)}, message: {e}"
+                    logger.exception(msg, exc_info=True)
             return results
         else:
             try:

@@ -37,6 +37,7 @@ class Provider(Enum):
     DEEPSEEK = "deepseek"
     VLLM = "vllm"
     SGLANG = "sglang"
+    OPENROUTER = "openrouter"
 
 
 MODEL_REGISTRY: dict[Provider, ProviderMeta] = {
@@ -89,6 +90,22 @@ MODEL_REGISTRY: dict[Provider, ProviderMeta] = {
         models={
             "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B": ModelMeta(
                 "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B"
+            ),
+        },
+    ),
+    Provider.OPENROUTER: ProviderMeta(
+        env_key="OPENROUTER_API_KEY",
+        base_url="https://openrouter.ai/api/v1",
+        supports_multi=False,
+        models={
+            "qwen/qwen3-235b-a22b-2507": ModelMeta(
+                "qwen/qwen3-235b-a22b-2507",
+            ),
+            "deepseek/deepseek-r1-0528": ModelMeta(
+                "deepseek/deepseek-r1-0528",
+            ),
+            "x-ai/grok-4": ModelMeta(
+                "x-ai/grok-4",
             ),
         },
     ),
