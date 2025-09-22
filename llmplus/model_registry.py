@@ -39,6 +39,7 @@ class Provider(Enum):
     SGLANG = "sglang"
     OPENROUTER = "openrouter"
     ANTHROPIC = "anthropic"
+    XAI = "xai"
 
 
 MODEL_REGISTRY: dict[Provider, ProviderMeta] = {
@@ -124,6 +125,19 @@ MODEL_REGISTRY: dict[Provider, ProviderMeta] = {
             "claude-sonnet-4-20250514": ModelMeta(
                 "claude-sonnet-4-20250514",
             )
+        },
+    ),
+    Provider.XAI: ProviderMeta(
+        env_key="XAI_API_KEY",
+        base_url="https://api.x.ai/v1",
+        supports_multi=False,
+        models={
+            "grok-4-0709": ModelMeta(
+                "grok-4-0709",
+            ),
+            "grok-4-fast-reasoning": ModelMeta(
+                "grok-4-fast-reasoning",
+            ),
         },
     ),
 }
