@@ -111,6 +111,9 @@ MODEL_REGISTRY: dict[Provider, ProviderMeta] = {
             "google/gemini-2.5-flash": ModelMeta(
                 "google/gemini-2.5-flash",
             ),
+            "anthropic/claude-sonnet-4": ModelMeta(
+                "anthropic/claude-sonnet-4",
+            ),
         },
     ),
     Provider.ANTHROPIC: ProviderMeta(
