@@ -18,6 +18,7 @@ dependencies = [
   "orjson",
   "python-dotenv",
   "nest-asyncio",
+  "omegaconf",
 ]
 
 [project.urls]

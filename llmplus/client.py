@@ -143,7 +143,9 @@ class LLMClient:
                 )
                 results[idx] = res
             except Exception as e:
-                logger.error("Prompt %s failed: %s", idx, e, exc_info=False)
+                msg = f"prompt {idx} failed: type: {type(e)}, message: {e}"
+                # logger.error("Prompt %s failed: %s", idx, e, exc_info=False)
+                logger.exception(msg, exc_info=True)
                 results[idx] = [None] * gen_kwargs.get("n", 1)
             finally:
                 pbar.update()

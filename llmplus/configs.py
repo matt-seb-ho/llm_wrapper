@@ -1,6 +1,8 @@
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+from omegaconf import DictConfig, OmegaConf
+
 from .model_registry import ModelMeta
 
 
@@ -18,6 +20,17 @@ class GenerationConfig:
     batch_size: int = field(default=16, metadata={"forward": False})
     ignore_cache: bool = field(default=False, metadata={"forward": False})
 
+    def __post_init__(self):
+        # hydra initialization sometimes leads to extra_kwargs being a DictConfig
+        # orjson cannot serialize DictConfig
+        if not self.extra_kwargs:
+            return
+        if isinstance(self.extra_kwargs, DictConfig):
+            self.extra_kwargs = OmegaConf.to_container(self.extra_kwargs, resolve=True)
+        else:
+            for k, v in self.extra_kwargs.items():
+                self.extra_kwargs[k] = self._preprocess_extra_kwarg(v)
+
     def override(self, **kwargs) -> "GenerationConfig":
         """Create a new instance with updated values."""
         arg_dict = asdict(self)
@@ -26,7 +39,7 @@ class GenerationConfig:
             if k in arg_dict:
                 arg_dict[k] = v
             else:
-                extra_kwargs[k] = v
+                extra_kwargs[k] = self._preprocess_extra_kwarg(v)
         return GenerationConfig(**arg_dict, extra_kwargs=extra_kwargs)
 
     # expose kwargs for OpenAI client (drop `n`)
@@ -50,6 +63,12 @@ class GenerationConfig:
         for unsupported_arg in model_meta.unsupported_kw:
             param_dict.pop(unsupported_arg, None)
         return param_dict
+
+    def _preprocess_extra_kwarg(self, val: Any) -> Any:
+        # ensure non-schema controlled extra_kwargs are json-serializable
+        if isinstance(val, DictConfig):
+            return OmegaConf.to_container(val, resolve=True)
+        return val
 
 
 @dataclass

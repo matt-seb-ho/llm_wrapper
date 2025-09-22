@@ -1,8 +1,8 @@
 import os
 from dataclasses import dataclass
 from enum import Enum
-from pathlib import Path
 from functools import cache
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -38,6 +38,7 @@ class Provider(Enum):
     VLLM = "vllm"
     SGLANG = "sglang"
     OPENROUTER = "openrouter"
+    ANTHROPIC = "anthropic"
 
 
 MODEL_REGISTRY: dict[Provider, ProviderMeta] = {
@@ -107,6 +108,19 @@ MODEL_REGISTRY: dict[Provider, ProviderMeta] = {
             "x-ai/grok-4": ModelMeta(
                 "x-ai/grok-4",
             ),
+            "google/gemini-2.5-flash": ModelMeta(
+                "google/gemini-2.5-flash",
+            ),
+        },
+    ),
+    Provider.ANTHROPIC: ProviderMeta(
+        env_key="ANTHROPIC_API_KEY",
+        base_url="https://api.anthropic.com/v1",
+        supports_multi=False,
+        models={
+            "claude-sonnet-4-20250514": ModelMeta(
+                "claude-sonnet-4-20250514",
+            )
         },
     ),
 }
